@@ -1,69 +1,86 @@
-import './App.css';
-import React, { useEffect } from 'react';
 import Prism from 'prismjs'
-import { Segment, Header, Container } from 'semantic-ui-react'
-import LiquidEditor from './LiquidEditor.jsx'
+import React, { useState, useCallback, useMemo, useEffect } from 'react'
+import { Slate, Editable, withReact } from 'slate-react'
+import { Text, createEditor, Element as SlateElement } from 'slate'
+import { withHistory } from 'slate-history'
 
-function App() {
-  useEffect(() => {
-    Prism.highlightAll()
-  }, [])
+const App = () => {
+  const [value, setValue] = useState(initialValue)
+  const [language, setLanguage] = useState('html')
+  const renderLeaf = useCallback(props => <Leaf {...props} />, [])
+  const editor = useMemo(() => withHistory(withReact(createEditor())), [])
+
+  // decorate function depends on the language selected
+  const decorate = useCallback(
+    ([node, path]) => {
+      const ranges = []
+      if (!Text.isText(node)) {
+        return ranges
+      }
+      const tokens = Prism.tokenize(node.text, Prism.languages[language])
+      let start = 0
+
+      for (const token of tokens) {
+        const length = getLength(token)
+        const end = start + length
+
+        if (typeof token !== 'string') {
+          ranges.push({
+            [token.type]: true,
+            anchor: { path, offset: start },
+            focus: { path, offset: end },
+          })
+        }
+
+        start = end
+      }
+
+      return ranges
+    },
+    [language]
+  )
 
   return (
-    <div>
-      <Segment inverted>
-        <Container textAlign='center'>
-          <Header
-            as='h1'
-            inverted
-            color='grey'
-          >
-            Slate + PrismJS (POC)
-          </Header>
-        </Container>
-      </Segment>
-
-      <Container className="App">
-        <LiquidEditor />
-
-        <Segment>
-          <pre className='line-numbers'>
-            <code className="language-liquid">
-              {`
-                {% assign verb = "turned" %}
-              `}
-            </code>
-          </pre>
-        </Segment>
-
-        <pre>
-          <code className="language-css">{`
-            .btn--green { background-color: #bada55; }
-            `}
-          </code>
-        </pre>
-
-        <pre>
-          <code className="language-javascript">{`
-            var hello = 'maria'
-            var hi = { hey: 'this' }
-            `}
-          </code>
-        </pre>
-
-        <pre className='line-numbers'>
-          <code className="language-liquid">{`
-          {% assign verb = "turned" %}
-          {% comment %}
-          {% assign verb = "converted" %}
-          {% endcomment %}
-          Anything you put between {% comment %} and {% endcomment %} tags
-          is {{ verb }} into a comment.
-          `}</code>
-        </pre>
-      </Container>
-    </div>
+    <Slate editor={editor} value={value} onChange={value => setValue(value)}>
+      <Editable
+        decorate={decorate}
+        renderLeaf={renderLeaf}
+        placeholder="Write some code..."
+      />
+    </Slate>
   )
 }
+
+const getLength = token => {
+  if (typeof token === 'string') {
+    return token.length
+  } else if (typeof token.content === 'string') {
+    return token.content.length
+  } else {
+    return token.content.reduce((l, t) => l + getLength(t), 0)
+  }
+}
+
+// different token types, styles found on Prismjs website
+const Leaf = ({ attributes, children, leaf }) => {
+  return (
+    <span {...attributes}>
+      {children}
+    </span>
+  )
+}
+
+const initialValue = [
+  {
+    type: 'paragraph',
+    children: [
+      {
+        text: '',
+      },
+    ],
+  },
+]
+
+// modifications and additions to prism library
 
 export default App
